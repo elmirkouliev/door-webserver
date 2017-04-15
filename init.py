@@ -12,7 +12,7 @@ PLAYLIST = "fresh"
 # Sensors
 DOOR = 'door'
 MOTION = 'motion';
-THRESHOLD = 5000;
+THRESHOLD = 5;
 
 sensors = {
     'door': {
@@ -57,8 +57,14 @@ def handleSensor (sensor, state):
 
             # Is it currently open?
             if int(sensors[sensor]['state']) == 1:
-                print('Playing...');
-                startPlaylist();
+                diff = datetime.datetime.now() - sensors[sensor]['updated_at'];
+
+                if diff.seconds < THRESHOLD:
+                    print('Playing...');
+                    startPlaylist();
+                else:
+                    print('Stopping...');
+                    stop();
 
             sensors[sensor]['state'] = state;
             sensors[sensor]['updated_at'] = datetime.datetime.now();
@@ -89,6 +95,9 @@ def startPlaylist():
     playList = {"uri" : playlist['uri']} 
     playPlaylist = post(MOPIDY, mopidyRequestBody('core.tracklist.add', playList))
     play = post(MOPIDY, mopidyRequestBody('core.playback.play', None))
+
+def stop():
+    stop = post(MOPIDY, mopidyRequestBody('core.playback.stop', None))
 
 
 @app.route('/sensor', methods=['GET'])
