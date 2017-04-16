@@ -85,8 +85,9 @@ def startPlaylist():
 
     status = post(MOPIDY, mopidyRequestBody("core.playback.get_state", None));
 
-    if(status['result'] == 'playing')
-        return print('Already playing');
+    if status['result'] == "playing":
+        print("Already playing")
+	return
 
     playlists = post(MOPIDY, mopidyRequestBody("core.playlists.as_list", None));
 
