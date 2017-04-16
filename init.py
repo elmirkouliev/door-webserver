@@ -12,7 +12,8 @@ PLAYLIST = "fresh"
 # Sensors
 DOOR = 'door'
 MOTION = 'motion';
-THRESHOLD = 5;
+MIN_OPEN_TIME = 3;
+MAX_OPEN_TIME = 13;
 
 sensors = {
     'door': {
@@ -39,7 +40,6 @@ def mopidyRequestBody(method, params):
 
 def handleSensor (sensor, state):
     """Handles sensor data and determines if we should start the playlist"""
-
     if sensors[sensor] is None:
         return
 
@@ -49,8 +49,7 @@ def handleSensor (sensor, state):
         # Has it just been opened
         if int(state) == 1:
             # Save to state
-            sensors[sensor]['state'] = state;
-            sensors[sensor]['updated_at'] = datetime.datetime.now();
+            updateState(sensor, state);
 
         # Has it been closed?
         elif int(state) == 0:
@@ -59,17 +58,25 @@ def handleSensor (sensor, state):
             if int(sensors[sensor]['state']) == 1:
                 diff = datetime.datetime.now() - sensors[sensor]['updated_at'];
 
-                if diff.seconds < THRESHOLD:
+                print(diff.seconds);
+
+                # Has it open enough
+                if diff.seconds >= MIN_OPEN_TIME and diff.seconds < MAX_OPEN_TIME:
                     print('Playing...');
+                    updateState(sensor, state);
                     startPlaylist();
                 else:
                     print('Stopping...');
+                    updateState(sensor, state);
                     stop();
+            else:
+                updateState(sensor, state);
 
-            sensors[sensor]['state'] = state;
-            sensors[sensor]['updated_at'] = datetime.datetime.now();
+    return "{ \"sensor\" : " + sensor + ", \"state\" : " + state + " }";
 
-    print(sensors);
+def updateState (sensor, state):
+    sensors[sensor]['state'] = state;
+    sensors[sensor]['updated_at'] = datetime.datetime.now();                    
 
 def post (url, body):
     response = requests.post(url, json=body);
@@ -79,32 +86,52 @@ def post (url, body):
 
     return json.loads(response.text);
 
-
 def startPlaylist(): 
-    playlist = None
+    status = post(MOPIDY, mopidyRequestBody("core.playback.get_state", None))
 
-    status = post(MOPIDY, mopidyRequestBody("core.playback.get_state", None));
-
+    # Check if music is already playing
     if status['result'] == "playing":
         print("Already playing")
-	return
+        return
 
+    # Fetch current tracks in queue
+    currentTracks = post(MOPIDY, mopidyRequestBody("core.tracklist.get_tracks", None))
+    # Fetch playlists
     playlists = post(MOPIDY, mopidyRequestBody("core.playlists.as_list", None));
 
+    # Find the one we're looking for
     for result in playlists['result']:
         if(result['name'].lower() == PLAYLIST):
             playlist = result
             break
 
-    clearTracks = post(MOPIDY, mopidyRequestBody("core.tracklist.clear", None))
+    if playlist is None:
+        print("Can\'t find playlist: ", PLAYLIST)
+        return
 
-    playList = {"uri" : playlist['uri']} 
-    playPlaylist = post(MOPIDY, mopidyRequestBody('core.tracklist.add', playList))
-    play = post(MOPIDY, mopidyRequestBody('core.playback.play', None))
+    playListItems = post(MOPIDY, mopidyRequestBody("core.playlists.get_items", {"uri" : playlist['uri']}))
+
+    similar = 0;
+
+    # Count the number of similar tracks in current tracklist and the playlist
+    for track in playListItems['result']:
+        if len(
+            filter(lambda currTrack: track['uri'] in currTrack['uri'], currentTracks['result'])
+        ) > 0:
+            similar += 1;
+
+    post(MOPIDY, mopidyRequestBody("core.playlists.refresh", {"uri" : playlist['uri']}))
+
+    # Playlist isn't currently playing
+    if similar < 4:
+        post(MOPIDY, mopidyRequestBody("core.tracklist.clear", None))
+        post(MOPIDY, mopidyRequestBody('core.tracklist.add', {"uri" : playlist['uri']}))
+        post(MOPIDY, mopidyRequestBody('core.tracklist.shuffle', None))
+    else:
+        post(MOPIDY, mopidyRequestBody('core.playback.play', None))
 
 def stop():
     stop = post(MOPIDY, mopidyRequestBody('core.playback.stop', None))
-
 
 @app.route('/sensor', methods=['GET'])
 def sensor():
@@ -112,8 +139,7 @@ def sensor():
     state = request.args.get('state')
 
     if sensor is not None and state is not None:
-        handleSensor(sensor, state)
-        return 'ok';
+        return handleSensor(sensor, state)
     else:
         return 'Missing parameters!', 400
 
