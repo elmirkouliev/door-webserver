@@ -82,10 +82,15 @@ def post (url, body):
 
 def startPlaylist(): 
     playlist = None
+
+    status = post(MOPIDY, mopidyRequestBody("core.playback.get_state", None));
+
+    if(status['result'] == 'playing')
+        return print('Already playing');
+
     playlists = post(MOPIDY, mopidyRequestBody("core.playlists.as_list", None));
 
     for result in playlists['result']:
-
         if(result['name'].lower() == PLAYLIST):
             playlist = result
             break
