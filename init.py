@@ -7,12 +7,12 @@ app = Flask(__name__)
 # 
 ROOT = 'http://raspberrypi.local';
 MOPIDY = ROOT + ":6680/mopidy/rpc"
-PLAYLIST = "fresh"
+PLAYLIST = "indie"
 
 # Sensors
 DOOR = 'door'
 MOTION = 'motion';
-MIN_OPEN_TIME = 3;
+MIN_OPEN_TIME = 2;
 MAX_OPEN_TIME = 13;
 
 sensors = {
@@ -121,17 +121,20 @@ def startPlaylist():
             similar += 1;
 
     post(MOPIDY, mopidyRequestBody("core.playlists.refresh", {"uri" : playlist['uri']}))
+    
+    print('Similar: ' + str(similar))
 
     # Playlist isn't currently playing
-    if similar < 4:
+    if similar < 3:
         post(MOPIDY, mopidyRequestBody("core.tracklist.clear", None))
         post(MOPIDY, mopidyRequestBody('core.tracklist.add', {"uri" : playlist['uri']}))
         post(MOPIDY, mopidyRequestBody('core.tracklist.shuffle', None))
+    	post(MOPIDY, mopidyRequestBody('core.playback.play', None))
     else:
         post(MOPIDY, mopidyRequestBody('core.playback.play', None))
 
 def stop():
-    stop = post(MOPIDY, mopidyRequestBody('core.playback.stop', None))
+    stop = post(MOPIDY, mopidyRequestBody('core.playback.pause', None))
 
 @app.route('/sensor', methods=['GET'])
 def sensor():
